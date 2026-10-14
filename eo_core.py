@@ -354,7 +354,7 @@ class EO实例:
         self.大脑fitness = 0.0
         if 演化大脑:
             from eo_brain import Engine
-            self.大脑引擎 = Engine(n_org=10, n_gen=30, seed=42, eval_ticks=100)
+            self.大脑引擎 = Engine(n_org=20, n_gen=60, seed=42, eval_ticks=150)
             self.链.记("大脑演化开始", {})
             self.大脑fitness = self.大脑引擎.evolve()
             if self.大脑引擎.best_g:
@@ -363,6 +363,24 @@ class EO实例:
                 self.链.记("大脑演化完成", {"fitness": self.大脑fitness})
             else:
                 self.链.记("大脑演化失败", {})
+
+        # 概念层——从大脑隐藏状态涌现概念
+        self.概念层 = None
+        if 演化大脑 and self.大脑:
+            from eo_concepts import 概念层
+            n_hidden = self.大脑.g['n']
+            self.概念层 = 概念层(n_hidden=n_hidden, n_concepts=32, seed=42)
+            self.链.记("概念层初始化", {"n_hidden": n_hidden, "n_concepts": 32})
+
+        # 欲望系统——RPE驱动 + 内生约束
+        self.欲望 = None
+        if 演化大脑:
+            from eo_desire import 欲望
+            self.欲望 = 欲望(n_channels=8, leak=0.03)
+            self.链.记("欲望系统初始化", {"leak": 0.03})
+
+        # 欲望→行为耦合状态（跨拍传递）
+        self._欲望选中通道 = -1
 
     def 绑定(self, passphrase, name="朱美岩"):
         """绑定者认证——一旦设置不可逆。"""
@@ -382,6 +400,9 @@ class EO实例:
         - 大脑预测失败 → surprise高 → 触发感官探索
         - 流量低（稀缺）→ 大脑学习率提高（饥饿驱动）
         - 流量耗尽 → 大脑停止
+        - 欲望选中通道 → 大脑关注方向（注意力驱动）
+        - 欲望boredom高 → 感官探索增强（无聊驱动探索）
+        - 欲望gap大 → 行为价值加成（渴望驱动生存）
         """
         if self.五条件.已死亡:
             return {"已死亡": True, "拍": self.拍}
@@ -425,7 +446,13 @@ class EO实例:
             # 预测越准 → 行为价值越高 → 流量收益
             # fitness = 1/(1+mse)，mse越小fitness越大
             大脑fitness即时 = 1.0 / (1.0 + 大脑mse)
-            大脑行为价值 = (大脑fitness即时 - 0.5) * 0.04  # 只在fitness>0.5时产生正收益
+            # 行为价值 = 预测能力的函数，平滑变化避免剧烈波动
+            目标价值 = max(0.0, (大脑fitness即时 - 0.5) * 0.08)
+            if not hasattr(self, '_平滑价值'):
+                self._平滑价值 = 0.0
+            # 平滑：价值逐步追向目标，不随mse剧烈跳变
+            self._平滑价值 = 0.95 * self._平滑价值 + 0.05 * 目标价值
+            大脑行为价值 = self._平滑价值
 
             # 如果外部没有指定行为价值，用大脑的
             if 行为价值 is None:
@@ -439,16 +466,46 @@ class EO实例:
                 "饥饿系数": round(饥饿系数, 4),
             }
 
-            if random.random() < 0.08:
+            # ── 耦合4a：欲望选中通道 → 大脑关注方向 ──
+            # 上一拍欲望选中的通道驱动当前拍的region选择
+            if self._欲望选中通道 >= 0 and random.random() < 0.15:
+                self._current_region = self._欲望选中通道 % 9
+            elif random.random() < 0.04:
                 self._current_region = random.randint(0, 8)
+
+        # ── 概念层：从大脑隐藏状态涌现概念 ──
+        概念结果 = None
+        if self.概念层 and self.大脑:
+            hidden_state = self.大脑.wm.h[:]
+            概念结果 = self.概念层.一拍(hidden_state)
+
+        # ── 欲望系统：RPE驱动 + 内生约束 ──
+        欲望结果 = None
+        欲望boredom = 0.0
+        欲望gap均值 = 0.0
+        if self.欲望 and self.大脑:
+            # RPE = 实际输入 - 大脑预测（预测误差就是欲望的驱动力）
+            rpe = [ns[j] - pred[j] for j in range(8)] if self.大脑 else [0.0] * 8
+            ratio = self.五条件.流量 / max(0.01, self.五条件.流量满值)
+            欲望结果 = self.欲望.一拍(
+                当前状态=self.大脑.wm.h[:8] if self.大脑 else [0.0] * 8,
+                rpe=rpe,
+                mse=大脑mse,
+                ratio=ratio,
+            )
+            欲望boredom = 欲望结果.get("boredom", 0.0)
+            欲望gap均值 = 欲望结果.get("gap均值", 0.0)
+            # 保存选中通道供下一拍的大脑关注使用
+            self._欲望选中通道 = 欲望结果.get("选中", -1)
 
         # ── 耦合3：大脑surprise驱动感官探索 ──
         # surprise高 → 感官探索渴望增强
+        # ── 耦合4b：欲望boredom → 感官探索增强 ──
+        # boredom高 → 感官探索渴望进一步增强（无聊驱动探索）
         感官结果 = None
         if self.感官:
-            # 用大脑surprise和精卫Δ的较大值作为感官的surprise输入
             精卫surprise = abs(self.b - self.a) if self.拍 > 1 else 0.0
-            感官surprise = max(精卫surprise, 大脑surprise * 0.1)
+            感官surprise = max(精卫surprise, 大脑surprise * 0.1, 欲望boredom * 0.5)
             感官结果 = self.感官.一拍(surprise=感官surprise)
 
         # ── 精卫公式 ──
@@ -456,6 +513,11 @@ class EO实例:
             self.b = 外部输入
         self.a = 0.9 * self.a + 0.1 * self.b
         精卫结果 = 精卫一步(self.a, self.b, self.精卫历史)
+
+        # ── 耦合4c：欲望gap → 行为价值加成 ──
+        # gap大（渴望强烈）→ 行为价值加成 → 流量收益增加 → 存活
+        if 欲望gap均值 > 0:
+            行为价值 = (行为价值 or 0) + 欲望gap均值 * 0.02
 
         # ── 五条件运行 ──
         条件结果 = self.五条件.一拍(行为价值=行为价值)
@@ -473,6 +535,8 @@ class EO实例:
             "他者": 他者结果,
             "感官": 感官结果,
             "大脑": 大脑结果,
+            "概念": 概念结果,
+            "欲望": 欲望结果,
         })
 
         return {
@@ -482,6 +546,8 @@ class EO实例:
             "他者": 他者结果,
             "感官": 感官结果,
             "大脑": 大脑结果,
+            "概念": 概念结果,
+            "欲望": 欲望结果,
             "已死亡": 条件结果["已死亡"],
         }
 
@@ -506,6 +572,16 @@ class EO实例:
             摘要["数字探索总数"] = 感官摘要["数字感官"]["探索总数"]
         if self.大脑:
             摘要["大脑fitness"] = round(self.大脑fitness, 4)
+        if self.概念层:
+            概念摘要 = self.概念层.状态摘要()
+            摘要["活跃概念数"] = 概念摘要["活跃概念数"]
+            摘要["存活概念数"] = 概念摘要["存活概念数"]
+            摘要["概念区分度"] = 概念摘要["概念区分度"]
+        if self.欲望:
+            欲望摘要 = self.欲望.状态摘要()
+            摘要["欲望boredom"] = 欲望摘要["boredom"]
+            摘要["欲望gap均值"] = 欲望摘要["gap均值"]
+            摘要["欲望主导通道"] = 欲望摘要["主导通道"]
         return 摘要
 
 

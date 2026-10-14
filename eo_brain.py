@@ -202,6 +202,19 @@ class WM:
         errs = [actual[j] - pred[j] for j in range(N_CHANNELS)]
         mse = sum(e * e for e in errs) / N_CHANNELS
         surprise, edge = self.amygdala_surprise(mse)
+
+        # 崩溃恢复：mse突然暴增时，重置工作记忆状态（不是权重）
+        # 像生物受冲击后晕眩恢复——不带损坏状态继续跑
+        if mse > 5.0 and hasattr(self, '_prev_mse') and self._prev_mse < 1.0:
+            self.h = [0.0] * n
+            self.prev_h = [0.0] * n
+            self.db_history = []
+            self.input_vec = []
+            self.surprise_level = 0.0
+            self.sens_adapt = [0.0] * N_CHANNELS
+            self.prev_sens_raw = None
+        self._prev_mse = mse
+
         replay_prob = min(1.0, surprise * 10.0)
         if random.random() < replay_prob:
             self.hippocampal_replay({'target': actual[:], 'surprise': surprise, 'salience': surprise})
