@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 页面上的数字由 CI 当场跑出来，不是写死的。
+      # 跑不动就失败，不返回一个假数字。
+      - name: Regenerate results.json from a real run
+        run: |
+          python3 eo_core.py > /dev/null
+          python3 - <<'EOF'
+          import sys, json
+          sys.path.insert(0, '.')
+          import eo_api
+          out = {}
+          for k in ['core', 'v1']:
+              out[k] = eo_api.exp_summary(k, timeout=300)
+          json.dump(out, open('results.json', 'w'), ensure_ascii=False, indent=1)
+          print('regenerated:', {k: v.get('ok') for k, v in out.items()})
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
