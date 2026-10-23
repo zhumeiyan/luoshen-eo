@@ -1,0 +1,92 @@
+{
+ "core": {
+  "ok": true,
+  "exit_code": 0,
+  "desc": "五条件 + 哈希链 + 身份认证 自检",
+  "took_ms": 87,
+  "numbers": {
+   "flow": 1.0,
+   "scar": 1.0,
+   "dead": false,
+   "mse": null,
+   "fitness": null,
+   "理解度": null,
+   "capacity": 0.996,
+   "surprise": null,
+   "tick": null
+  },
+  "death_tick": null
+ },
+ "v1": {
+  "ok": true,
+  "exit_code": 0,
+  "desc": "基础涌现：持续收益 / 零收益 / 间歇收益",
+  "took_ms": 1505,
+  "numbers": {
+   "flow": 0.104,
+   "scar": 2.0,
+   "dead": false,
+   "mse": null,
+   "fitness": null,
+   "理解度": 0.9725,
+   "capacity": 0.9098,
+   "surprise": null,
+   "tick": 360.0
+  },
+  "death_tick": 125
+ },
+ "v3": {
+  "ok": true,
+  "exit_code": 0,
+  "desc": "完整 EO：约束 + 感官 + 大脑",
+  "took_ms": 52468,
+  "numbers": {
+   "flow": 1.0,
+   "scar": null,
+   "dead": false,
+   "mse": 0.045,
+   "fitness": 0.9148,
+   "理解度": 0.9557,
+   "capacity": null,
+   "surprise": 0.04,
+   "tick": 270.0
+  },
+  "death_tick": null
+ },
+ "v4": {
+  "ok": true,
+  "exit_code": 0,
+  "desc": "耦合涌现：稀缺→饥饿→学习",
+  "took_ms": 51701,
+  "numbers": {
+   "flow": 1.0,
+   "scar": null,
+   "dead": false,
+   "mse": 0.045,
+   "fitness": 0.9569,
+   "理解度": 0.9557,
+   "capacity": null,
+   "surprise": null,
+   "tick": 270.0
+  },
+  "death_tick": null
+ },
+ "v5": {
+  "ok": true,
+  "exit_code": 0,
+  "desc": "长期 1000 拍涌现",
+  "took_ms": 55515,
+  "numbers": {
+   "flow": 1.0,
+   "scar": 0.0,
+   "dead": false,
+   "mse": 0.2541,
+   "fitness": 0.9867,
+   "理解度": 0.9761,
+   "capacity": 0.9998,
+   "surprise": null,
+   "tick": 900.0
+  },
+  "death_tick": null
+ }
+}
